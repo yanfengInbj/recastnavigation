@@ -234,7 +234,7 @@ void Sample::handleCommonSettings()
 
 	imguiSeparator();
 	imguiLabel("Polygonization");
-	imguiSlider("Max Edge Length", &m_edgeMaxLen, 0.0f, 50.0f, 1.0f);
+	imguiSlider("Max Edge Length", &m_edgeMaxLen, 0.0f, 200.0f, 1.0f);
 	imguiSlider("Max Edge Error", &m_edgeMaxError, 0.1f, 3.0f, 0.1f);
 	imguiSlider("Verts Per Poly", &m_vertsPerPoly, 3.0f, 12.0f, 1.0f);		
 
@@ -409,6 +409,8 @@ dtNavMesh* Sample::loadAll(const char* path)
 	return mesh;
 }
 
+void tileToDrawVectex(int idx,const char* p, const dtMeshTile* tile);
+
 void Sample::saveAll(const char* path, const dtNavMesh* mesh)
 {
 	if (!mesh) return;
@@ -443,7 +445,174 @@ void Sample::saveAll(const char* path, const dtNavMesh* mesh)
 		fwrite(&tileHeader, sizeof(tileHeader), 1, fp);
 
 		fwrite(tile->data, tile->dataSize, 1, fp);
+
+		tileToDrawVectex(i,path,tile);
 	}
 
 	fclose(fp);
 }
+
+// yanf
+void tileToDrawVectex(int idx, const char* p, const dtMeshTile* tile) {
+	std::string s = "[";
+	char buffer[256];
+	for (int i = 0; i < tile->header->polyCount; ++i)
+	{
+		const dtPoly* p = &tile->polys[i];
+		if (p->getType() == DT_POLYTYPE_OFFMESH_CONNECTION)	// Skip off-mesh links.
+			continue;
+
+		const dtPolyDetail* pd = &tile->detailMeshes[i];
+
+		for (int j = 0; j < pd->triCount; ++j)
+		{
+			const unsigned char* t = &tile->detailTris[(pd->triBase + j) * 4];
+			for (int k = 0; k < 3; ++k)
+			{
+				float* pos;
+				if (t[k] < p->vertCount) {
+					pos = &tile->verts[p->verts[t[k]] * 3];
+				}
+				else
+				{
+					pos = &tile->detailVerts[(pd->vertBase + t[k] - p->vertCount) * 3];
+				}
+				sprintf_s(buffer, 256, "%.6f,%.6f,%.6f,", pos[0], pos[1], pos[2]);
+				s += buffer;
+			}
+		}
+	}
+	s[s.length() - 1] = ']';
+
+	sprintf_s(buffer, 256, "%s.%d.json", p, idx);
+	std::string path = buffer;
+
+	FILE* fp = fopen(path.c_str(), "wb");
+	if (!fp)
+		return;
+	fwrite((void*)s.c_str(), s.length(), 1, fp);
+	fclose(fp);
+}
+
+//void tileToObjString(const char* p, const dtMeshTile* tile) {
+//	std::string path = p;
+//	path += ".obj";
+//
+//	FILE* fp = fopen(path.c_str(), "wb");
+//	if (!fp)
+//		return;
+//
+//	const char* head_mtl = "mtllib 0.mtl\n";
+//	const char* head_obj = "o 0.obj\n";
+//
+//	fwrite(head_mtl, strlen(head_mtl), 1, fp);
+//	fwrite(head_obj, strlen(head_obj), 1, fp);
+//
+//	char buffer[256];
+//	int vertCount = tile->header->vertCount;
+//	int polyCount = tile->header->polyCount;
+//
+//	for (int i = 0; i < vertCount; i += 3) {
+//		//v - 21.847065 - 2.492895 19.569759
+//		sprintf_s(buffer, 256, "v %.6f %.6f %.6f\n", tile->verts[i], tile->verts[i + 1], tile->verts[i + 2]);
+//		fwrite(buffer, strlen(buffer), 1, fp);
+//	}
+//
+//	//const char* face_g = "g Generic\n";
+//	const char* face_d = "usemtl Default\n";
+//	//fwrite(face_g, strlen(face_g), 1, fp);
+//	fwrite(face_d, strlen(face_d), 1, fp);
+//	for (int i = 0; i < polyCount; ++i)
+//	{
+//		const dtPoly* p = &tile->polys[i];
+//
+//		if (p->getType() == DT_POLYTYPE_OFFMESH_CONNECTION)	// Skip off-mesh links.
+//			continue;
+//		//f 4/1/4 2/2/2 1/3/1 3/4/3
+//		std::string s = "f";
+//		for (int j = 0; j < p->vertCount; ++j) {
+//			sprintf_s(buffer, 256, "%d", p->verts[j]);
+//			s += " ";
+//			s += buffer;
+//		}
+//		s += "\n";
+//		fwrite((void*)s.c_str(), s.length(), 1, fp);
+//	}
+//
+//	fclose(fp);
+//}
+//
+//void tileToString(const char* p, const dtMeshTile* tile) {
+//	std::string path = p;
+//	path += ".json";
+//
+//	FILE* fp = fopen(path.c_str(), "wb");
+//	if (!fp)
+//		return;
+//
+//	char buffer[64];
+//	std::string tristr = "";
+//	int tris = 0;
+//	int vertCount = tile->header->vertCount;
+//	int polyCount = tile->header->polyCount;
+//	int detailVertCount = tile->header->detailVertCount;
+//	unsigned int idx;
+//
+//	for (int i = 0; i < polyCount; ++i)
+//	{
+//		const dtPoly* p = &tile->polys[i];
+//
+//		if (p->getType() == DT_POLYTYPE_OFFMESH_CONNECTION)	// Skip off-mesh links.
+//			continue;
+//
+//		const dtPolyDetail* pd = &tile->detailMeshes[i];
+//
+//		for (int j = 0; j < pd->triCount; ++j)
+//		{
+//			if (tris > 0) {
+//				tristr += ",";
+//			}
+//			tristr += "0";
+//			tris++;
+//			const unsigned char* t = &tile->detailTris[(pd->triBase + j) * 4];
+//			for (int k = 0; k < 3; ++k)
+//			{
+//				if (t[k] < p->vertCount) {
+//					idx = p->verts[t[k]] * 3;
+//				}
+//				else {
+//					idx = (pd->vertBase + t[k] - p->vertCount) * 3 + vertCount;
+//				}
+//				//tris.push(idx);
+//				sprintf_s(buffer, 64, "%d", idx);
+//				tristr += ",";
+//				tristr += buffer;
+//			}
+//		}
+//	}
+//
+//	std::string s = "{\n\"vertices\":[";
+//	for (int i = 0; i < vertCount; ++i) {
+//		sprintf_s(buffer, 64, "%.6f", tile->verts[i]);
+//		s += buffer;
+//		if (i < vertCount - 1) {
+//			s += ",";
+//		}
+//	}
+//	if (detailVertCount > 0) {
+//		s += ",";
+//		for (int i = 0; i < detailVertCount; ++i) {
+//			sprintf_s(buffer, 64, "%.6f", tile->detailVerts[i]);
+//			s += buffer;
+//			if (i < detailVertCount - 1) {
+//				s += ",";
+//			}
+//		}
+//	}
+//	s += "],\n\"faces\":[";
+//	s += tristr;
+//	s += "]\n}\n";
+//
+//	fwrite((void*)s.c_str(), s.length(), 1, fp);
+//	fclose(fp);
+//}
